@@ -1,5 +1,5 @@
 ## Interface: 11200
-## Title: BetterCharacterStats 1.15.3 - USS Enterprise Edition
+## Title: BetterCharacterStats 1.15.3 |cff00ffff[USS Enterprise Edition]|r
 ## Author: moh, Bennylava, Lexie, Spit, Pepopo, MarcelineVQ
 ## Version: 1.15.3-1701-1
 ## Notes: Improved character statistics inside Character Info panel.
