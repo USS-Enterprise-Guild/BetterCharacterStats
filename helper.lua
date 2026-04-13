@@ -6,6 +6,15 @@ local BCS_Tooltip = BetterCharacterStatsTooltip or CreateFrame("GameTooltip", "B
 local BCS_Prefix = "BetterCharacterStatsTooltip"
 BCS_Tooltip:SetOwner(WorldFrame, "ANCHOR_NONE")
 
+-- Safe wrapper: re-anchor tooltip before each scan to prevent stale owner crashes
+local function ResetTooltip()
+	BCS_Tooltip:SetOwner(WorldFrame, "ANCHOR_NONE")
+end
+
+-- Max buff/debuff indices to scan (TurtleWoW may support more than vanilla's 32/16)
+local MAX_BUFF_INDEX = 39
+local MAX_DEBUFF_INDEX = 15
+
 local L = BCS["L"]
 local setPattern = L.SET_PATTERN
 local strfind = strfind
@@ -86,6 +95,7 @@ local function ScanAllGear()
 	twipe(SetBonus.spell_pen)
 
 	-- Scan all equipment slots ONCE
+	ResetTooltip()
 	for slot = 1, 19 do
 		local itemLink = GetInventoryItemLink("player", slot)
 		if itemLink then
@@ -532,6 +542,7 @@ local function ScanAllTalents()
 	twipe(TalentCache)
 
 	-- Scan all talents ONCE
+	ResetTooltip()
 	for tab = 1, GetNumTalentTabs() do
 		for talent = 1, GetNumTalents(tab) do
 			local _, _, _, _, rank = GetTalentInfo(tab, talent)
@@ -1108,39 +1119,40 @@ local function ScanAllAuras()
 	AuraCache.waterShieldStacks = 0
 
 	-- Scan all buffs ONCE and cache their tooltip text + specific stacks we need
-	for i = 0, 31 do
+	ResetTooltip()
+	for i = 0, MAX_BUFF_INDEX do
 		local index = GetPlayerBuff(i, "HELPFUL")
-		if index > -1 then
-			-- Cache icon/stacks for buffs we need later (avoids re-looping)
-			local icon, stacks = UnitBuff("player", i)
-			if icon then
-				if icon == "Interface\\Icons\\Spell_Holy_CrusaderStrike" then
-					AuraCache.zealStacks = stacks or 0
-				elseif icon == "Interface\\Icons\\Ability_Shaman_WaterShield" then
-					AuraCache.waterShieldStacks = stacks or 0
-				end
-			end
+		if not index or index == -1 then break end
 
-			BCS_Tooltip:SetPlayerBuff(index)
-			for line = 1, BCS_Tooltip:NumLines() do
-				local text = _G[BCS_Prefix .. "TextLeft" .. line]:GetText()
-				if text then
-					AuraCache.buffs[text] = (AuraCache.buffs[text] or 0) + 1
-				end
+		-- Cache icon/stacks for buffs we need later (avoids re-looping)
+		local icon, stacks = UnitBuff("player", i + 1)
+		if icon then
+			if icon == "Interface\\Icons\\Spell_Holy_CrusaderStrike" then
+				AuraCache.zealStacks = stacks or 0
+			elseif icon == "Interface\\Icons\\Ability_Shaman_WaterShield" then
+				AuraCache.waterShieldStacks = stacks or 0
+			end
+		end
+
+		BCS_Tooltip:SetPlayerBuff(index)
+		for line = 1, BCS_Tooltip:NumLines() do
+			local text = _G[BCS_Prefix .. "TextLeft" .. line]:GetText()
+			if text then
+				AuraCache.buffs[text] = (AuraCache.buffs[text] or 0) + 1
 			end
 		end
 	end
 
 	-- Scan debuffs
-	for i = 0, 6 do
+	for i = 0, MAX_DEBUFF_INDEX do
 		local index = GetPlayerBuff(i, "HARMFUL")
-		if index > -1 then
-			BCS_Tooltip:SetPlayerBuff(index)
-			for line = 1, BCS_Tooltip:NumLines() do
-				local text = _G[BCS_Prefix .. "TextLeft" .. line]:GetText()
-				if text then
-					AuraCache.debuffs[text] = (AuraCache.debuffs[text] or 0) + 1
-				end
+		if not index or index == -1 then break end
+
+		BCS_Tooltip:SetPlayerBuff(index)
+		for line = 1, BCS_Tooltip:NumLines() do
+			local text = _G[BCS_Prefix .. "TextLeft" .. line]:GetText()
+			if text then
+				AuraCache.debuffs[text] = (AuraCache.debuffs[text] or 0) + 1
 			end
 		end
 	end
@@ -1244,27 +1256,28 @@ function BCS:GetPlayerAura(searchText, auraType)
 	for _ in pairs(cache) do hasCache = true; break end
 	if not hasCache then
 		-- Fallback to direct scan if cache is empty
+		ResetTooltip()
 		if not auraType then
 			local _, numValues = gsub(searchText, "%(%%d%+?%)", "")
 			if numValues > 0 then
 				local total1, total2 = 0, 0
 				local s, e
-				for i = 0, 31 do
+				for i = 0, MAX_BUFF_INDEX do
 					local index = GetPlayerBuff(i, "HELPFUL")
-					if index > -1 then
-						BCS_Tooltip:SetPlayerBuff(index)
-						for line = 1, BCS_Tooltip:NumLines() do
-							local text = _G[BCS_Prefix .. "TextLeft" .. line]:GetText()
-							if text then
-								local _s, _e, amount, amount2 = strfind(text, searchText)
-								if amount then
-									total1 = total1 + tonumber(amount)
-									s, e = _s, _e
-								end
-								if amount2 then
-									total2 = total2 + tonumber(amount2)
-									s, e = _s, _e
-								end
+					if not index or index == -1 then break end
+
+					BCS_Tooltip:SetPlayerBuff(index)
+					for line = 1, BCS_Tooltip:NumLines() do
+						local text = _G[BCS_Prefix .. "TextLeft" .. line]:GetText()
+						if text then
+							local _s, _e, amount, amount2 = strfind(text, searchText)
+							if amount then
+								total1 = total1 + tonumber(amount)
+								s, e = _s, _e
+							end
+							if amount2 then
+								total2 = total2 + tonumber(amount2)
+								s, e = _s, _e
 							end
 						end
 					end
@@ -1273,31 +1286,32 @@ function BCS:GetPlayerAura(searchText, auraType)
 				total2 = total2 > 0 and total2 or nil
 				return s, e, total1, total2
 			end
-			for i = 0, 31 do
+			for i = 0, MAX_BUFF_INDEX do
 				local index = GetPlayerBuff(i, "HELPFUL")
-				if index > -1 then
-					BCS_Tooltip:SetPlayerBuff(index)
-					for line = 1, BCS_Tooltip:NumLines() do
-						local text = _G[BCS_Prefix .. "TextLeft" .. line]:GetText()
-						if text then
-							if strfind(text, searchText) then
-								return strfind(text, searchText)
-							end
+				if not index or index == -1 then break end
+
+				BCS_Tooltip:SetPlayerBuff(index)
+				for line = 1, BCS_Tooltip:NumLines() do
+					local text = _G[BCS_Prefix .. "TextLeft" .. line]:GetText()
+					if text then
+						if strfind(text, searchText) then
+							return strfind(text, searchText)
 						end
 					end
 				end
 			end
 		else
-			for i = 0, 6 do
+			local maxIndex = auraType == "HARMFUL" and MAX_DEBUFF_INDEX or MAX_BUFF_INDEX
+			for i = 0, maxIndex do
 				local index = GetPlayerBuff(i, auraType)
-				if index > -1 then
-					BCS_Tooltip:SetPlayerBuff(index)
-					for line = 1, BCS_Tooltip:NumLines() do
-						local text = _G[BCS_Prefix .. "TextLeft" .. line]:GetText()
-						if text then
-							if strfind(text, searchText) then
-								return strfind(text, searchText)
-							end
+				if not index or index == -1 then break end
+
+				BCS_Tooltip:SetPlayerBuff(index)
+				for line = 1, BCS_Tooltip:NumLines() do
+					local text = _G[BCS_Prefix .. "TextLeft" .. line]:GetText()
+					if text then
+						if strfind(text, searchText) then
+							return strfind(text, searchText)
 						end
 					end
 				end
@@ -1753,9 +1767,11 @@ function BCS:GetBlockValue()
 	local mod = BCScache["talents"].block_mod
 
 	-- Gear (still scanned here as block value isn't in the gear cache)
+	ResetTooltip()
 	for slot = 1, 19 do
 		if BCS_Tooltip:SetInventoryItem("player", slot) then
-			local _, _, eqItemLink = strfind(GetInventoryItemLink("player", slot), "(item:%d+:%d+:%d+:%d+)")
+			local itemLink = GetInventoryItemLink("player", slot)
+			local _, _, eqItemLink = strfind(itemLink or "", "(item:%d+:%d+:%d+:%d+)")
 			if eqItemLink then
 				BCS_Tooltip:ClearLines()
 				BCS_Tooltip:SetHyperlink(eqItemLink)
