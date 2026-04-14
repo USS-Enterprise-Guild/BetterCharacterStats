@@ -11,6 +11,17 @@ local function ResetTooltip()
 	BCS_Tooltip:SetOwner(WorldFrame, "ANCHOR_NONE")
 end
 
+-- Safe tooltip line text reader: avoids C-level crash (Error 132) when a FontString
+-- exists but its internal text pointer is NULL (offset 0x24 ACCESS_VIOLATION).
+-- Returns the text string, or nil if the line is missing/uninitialized.
+local function GetTooltipLine(line)
+	local fontString = _G[BCS_Prefix .. "TextLeft" .. line]
+	if not fontString or not fontString.GetText or not fontString:IsShown() then
+		return nil
+	end
+	return fontString:GetText()
+end
+
 -- Max buff/debuff indices to scan (TurtleWoW may support more than vanilla's 32/16)
 local MAX_BUFF_INDEX = 39
 local MAX_DEBUFF_INDEX = 15
@@ -111,7 +122,7 @@ local function ScanAllGear()
 					BCS_Tooltip:SetHyperlink(eqItemLink)
 
 					for line = 1, BCS_Tooltip:NumLines() do
-						local text = _G[BCS_Prefix .. "TextLeft" .. line]:GetText()
+						local text = GetTooltipLine(line)
 						if text then
 							local _, _, value
 
@@ -485,9 +496,10 @@ local function ScanAllGear()
 
 	-- Scan weapon for temporary enhancements (wizard oils, mana oils)
 	-- These must use SetInventoryItem, not SetHyperlink
+	BCS_Tooltip:ClearLines()
 	if BCS_Tooltip:SetInventoryItem("player", 16) then
 		for line = 1, BCS_Tooltip:NumLines() do
-			local text = _G[BCS_Prefix .. "TextLeft" .. line]:GetText()
+			local text = GetTooltipLine(line)
 			if text then
 				if strfind(text, L["^Brilliant Wizard Oil"]) then
 					BCScache["gear"].damage_and_healing = BCScache["gear"].damage_and_healing + 36
@@ -547,9 +559,10 @@ local function ScanAllTalents()
 		for talent = 1, GetNumTalents(tab) do
 			local _, _, _, _, rank = GetTalentInfo(tab, talent)
 			if rank and rank > 0 then
+				BCS_Tooltip:ClearLines()
 				BCS_Tooltip:SetTalent(tab, talent)
 				for line = 1, BCS_Tooltip:NumLines() do
-					local text = _G[BCS_Prefix .. "TextLeft" .. line]:GetText()
+					local text = GetTooltipLine(line)
 					if text then
 						if text == TOOLTIP_TALENT_NEXT_RANK then break end
 						local _, _, value, value1
@@ -1134,9 +1147,10 @@ local function ScanAllAuras()
 			end
 		end
 
+		BCS_Tooltip:ClearLines()
 		BCS_Tooltip:SetPlayerBuff(index)
 		for line = 1, BCS_Tooltip:NumLines() do
-			local text = _G[BCS_Prefix .. "TextLeft" .. line]:GetText()
+			local text = GetTooltipLine(line)
 			if text then
 				AuraCache.buffs[text] = (AuraCache.buffs[text] or 0) + 1
 			end
@@ -1148,9 +1162,10 @@ local function ScanAllAuras()
 		local index = GetPlayerBuff(i, "HARMFUL")
 		if not index or index == -1 then break end
 
+		BCS_Tooltip:ClearLines()
 		BCS_Tooltip:SetPlayerBuff(index)
 		for line = 1, BCS_Tooltip:NumLines() do
-			local text = _G[BCS_Prefix .. "TextLeft" .. line]:GetText()
+			local text = GetTooltipLine(line)
 			if text then
 				AuraCache.debuffs[text] = (AuraCache.debuffs[text] or 0) + 1
 			end
@@ -1266,9 +1281,10 @@ function BCS:GetPlayerAura(searchText, auraType)
 					local index = GetPlayerBuff(i, "HELPFUL")
 					if not index or index == -1 then break end
 
+					BCS_Tooltip:ClearLines()
 					BCS_Tooltip:SetPlayerBuff(index)
 					for line = 1, BCS_Tooltip:NumLines() do
-						local text = _G[BCS_Prefix .. "TextLeft" .. line]:GetText()
+						local text = GetTooltipLine(line)
 						if text then
 							local _s, _e, amount, amount2 = strfind(text, searchText)
 							if amount then
@@ -1290,9 +1306,10 @@ function BCS:GetPlayerAura(searchText, auraType)
 				local index = GetPlayerBuff(i, "HELPFUL")
 				if not index or index == -1 then break end
 
+				BCS_Tooltip:ClearLines()
 				BCS_Tooltip:SetPlayerBuff(index)
 				for line = 1, BCS_Tooltip:NumLines() do
-					local text = _G[BCS_Prefix .. "TextLeft" .. line]:GetText()
+					local text = GetTooltipLine(line)
 					if text then
 						if strfind(text, searchText) then
 							return strfind(text, searchText)
@@ -1306,9 +1323,10 @@ function BCS:GetPlayerAura(searchText, auraType)
 				local index = GetPlayerBuff(i, auraType)
 				if not index or index == -1 then break end
 
+				BCS_Tooltip:ClearLines()
 				BCS_Tooltip:SetPlayerBuff(index)
 				for line = 1, BCS_Tooltip:NumLines() do
-					local text = _G[BCS_Prefix .. "TextLeft" .. line]:GetText()
+					local text = GetTooltipLine(line)
 					if text then
 						if strfind(text, searchText) then
 							return strfind(text, searchText)
@@ -1391,10 +1409,10 @@ function BCS:GetCritChance()
 		for spell = 1, numSpells do
 			local currentPage = ceil(spell / SPELLS_PER_PAGE)
 			local SpellID = spell + offset + (SPELLS_PER_PAGE * (currentPage - 1))
+			BCS_Tooltip:ClearLines()
 			BCS_Tooltip:SetSpell(SpellID, BOOKTYPE_SPELL)
 			for line = 1, BCS_Tooltip:NumLines() do
-				local left = _G[BCS_Prefix .. "TextLeft" .. line]
-				local text = left:GetText()
+				local text = GetTooltipLine(line)
 				if text then
 					local _, _, value = strfind(text, L["([%d.]+)%% chance to crit"])
 					if value then
@@ -1777,8 +1795,7 @@ function BCS:GetBlockValue()
 				BCS_Tooltip:SetHyperlink(eqItemLink)
 			end
 			for line = 1, BCS_Tooltip:NumLines() do
-				local left = _G[BCS_Prefix .. "TextLeft" .. line]
-				local text = left:GetText()
+				local text = GetTooltipLine(line)
 				if text then
 					local _, _, value = strfind(text, L["(%d+) Block"])
 					if value then
